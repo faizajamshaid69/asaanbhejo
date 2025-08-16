@@ -1,88 +1,84 @@
-// components/WalletConnect.tsx
-import { useEffect, useState } from "react";
-import { isConnected, connect, getPublicKey } from "@stellar/freighter-api";
-import axios from "axios";
+"use client";
+
+import { useState } from "react";
+
+declare global {
+  interface Window {
+    freighterApi?: any;
+  }
+}
 
 export default function WalletConnect() {
-  const [connected, setConnected] = useState(false);
   const [publicKey, setPublicKey] = useState<string | null>(null);
-  const [status, setStatus] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      if (window && (window as any).freighterApi) {
-        const c = await isConnected();
-        setConnected(c);
-        if (c) {
-          const pk = await getPublicKey();888888888888jum 
-          setPublicKey(pk);
-        }
-      }
-    })();
-  }, []);
-
-  const handleConnect = async () => {
+  // Connect Wallet
+  const connectWallet = async () => {
     try {
-      // triggers Freighter connection flow (opens extension)
-      await connect();
-      const pk = await getPublicKey();
-      setPublicKey(pk);
-      setConnected(true);
-      setStatus(`Connected ${pk}`);
-    } catch (e: any) {
-      setStatus("Connect failed: " + e.message);
+      if (!window.freighterApi) {
+        alert("Freighter Wallet not installed!");
+        return;
+      }
+      const pubKey = await window.freighterApi.getPublicKey();
+      setPublicKey(pubKey);
+    } catch (err) {
+      console.error("Wallet connection failed:", err);
     }
   };
 
-  const sendTestPayment = async () => {
-    if (!publicKey) return setStatus("Connect wallet first");
-    try {
-      setStatus("Building transaction…");
-      // For demo: destination is another testnet pubkey or one you choose
-      const dest = "G...DESTINATION_PUBLIC_KEY..."; // replace or prompt user
-      const amount = "10"; // 10 XLM
-
-      // 1) Ask server to build unsigned transaction XDR for the sender public key
-      const r = await axios.post("/api/build-payment", {
-        senderPublicKey: publicKey,
-        destination: dest,
-        amount,
-      });
-
-      const { xdr } = r.data;
-
-      // 2) Ask Freighter to sign the transaction XDR
-      // freighterApi.signTransaction expects network passphrase
-      const freighter = (window as any).freighterApi;
-      setStatus("Signing transaction in Freighter...");
-      const signed = await freighter.signTransaction(xdr, "TESTNET");
-
-      // signed is { signature: '...', xdr: '...' } or contains signedTx
-      // You can submit signed transaction via Horizon:
-      setStatus("Submitting transaction...");
-      const submitRes = await axios.post("/api/submit-xdr", { signedXdr: signed.xdr });
-      setStatus("Transaction submitted: " + submitRes.data.txHash);
-    } catch (err: any) {
-      console.error(err);
-      setStatus("Error: " + (err?.response?.data?.error || err.message));
+  // 👇 Yahan tumhara sendPayment function paste hoga
+  const sendPayment = async () => {
+    if (!publicKey) {
+      alert("Please connect wallet first!");
+      return;
     }
+
+    const receiver = "GBZXN7PIRZGNMHGA72YMRXQNNYQFJVRMFDJZ6A3BGJN5YUTIVVJ6WFXM";
+
+    const res = await fetch("/api/build-payment/submit-xdr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender: publicKey, receiver, amount: "1" }),
+    });
+
+    const data = await res.json();
+    if (!data.xdr) {
+      alert("Error building transaction");
+      return;
+    }
+
+    const signed = await window.freighterApi.signAndSubmitTransaction(
+      data.xdr,
+      { network: "TESTNET" }
+    );
+
+    console.log("Transaction result:", signed);
+    alert("✅ Transaction Successful: " + signed.hash);
   };
 
   return (
-    <div className="space-y-3">
-      <div>Status: {status}</div>
-      {!connected ? (
-        <button onClick={handleConnect} className="px-4 py-2 bg-white text-blue-600 rounded">
-          Connect Freighter
+  <div className="p-4 border rounded-xl bg-gray-100">
+    <h2 className="text-lg font-bold mb-2">Stellar Wallet</h2>
+
+    {publicKey ? (
+      <>
+        <p className="text-green-600">✅ Connected: {publicKey}</p>
+
+        {/* 👇 Yahan tumhara Send Payment button */}
+        <button
+          onClick={sendPayment}
+          className="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+        >
+          Send 1 USDC
         </button>
-      ) : (
-        <>
-          <div>Connected: {publicKey}</div>
-          <button onClick={sendTestPayment} className="px-4 py-2 bg-white text-blue-600 rounded">
-            Send Test Payment
-          </button>
-        </>
-      )}
-    </div>
-  );
+      </>
+    ) : (
+      <button
+        onClick={connectWallet}
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+      >
+        Connect Freighter
+      </button>
+    )}
+  </div>
+);
 }
